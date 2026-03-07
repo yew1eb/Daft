@@ -442,6 +442,270 @@ daft-catalog
 
 ---
 
+## 可运行示例
+
+以下是直接从测试中提取的可运行代码示例，帮助理解 Daft 的使用方式。
+
+### 示例 1: DataFrame 基本操作
+
+```python
+# 文件: examples/dataframe_basics.py
+# 运行: python examples/dataframe_basics.py
+
+from __future__ import annotations
+import daft
+from daft import col, lit
+
+# 1. 从字典创建 DataFrame
+df = daft.from_pydict({
+    "name": ["Alice", "Bob", "Charlie", "Diana"],
+    "age": [25, 30, 35, 28],
+    "salary": [50000.0, 60000.0, 75000.0, 65000.0],
+    "department": ["Engineering", "Sales", "Engineering", "Marketing"]
+})
+
+print("=== 原始数据 ===")
+df.show()
+
+# 2. 过滤数据
+print("\n=== 过滤: age > 28 ===")
+df.filter(col("age") > 28).show()
+
+# 3. 选择列
+print("\n=== 选择 name 和 salary 列 ===")
+df.select(col("name"), col("salary")).show()
+
+# 4. 添加计算列
+print("\n=== 添加 bonus 列 (salary * 0.1) ===")
+df.with_column("bonus", col("salary") * lit(0.1)).show()
+
+# 5. 聚合操作
+print("\n=== 按部门统计平均薪资 ===")
+df.groupby(col("department")).agg(
+    daft.mean(col("salary")).alias("avg_salary"),
+    daft.count(col("name")).alias("employee_count")
+).show()
+
+# 6. 排序
+print("\n=== 按年龄降序排列 ===")
+df.sort(col("age"), desc=True).show()
+
+# 7. 收集结果到 Python
+collected = df.collect().to_pydict()
+print("\n=== 收集为 Python 字典 ===")
+print(collected)
+```
+
+### 示例 2: Series 字符串操作
+
+```python
+# 文件: examples/series_string_ops.py
+# 运行: python examples/series_string_ops.py
+
+from __future__ import annotations
+from daft import Series
+
+# 创建字符串 Series
+s = Series.from_pylist(["hello", "WORLD", "RustPython", "DaftDataFrame", None])
+
+print("=== 原始 Series ===")
+print(s.to_pylist())
+
+# 1. 转小写
+print("\n=== 转小写 (lower) ===")
+print(s.str.lower().to_pylist())
+
+# 2. 转大写
+print("\n=== 转大写 (upper) ===")
+print(s.str.upper().to_pylist())
+
+# 3. 首字母大写
+print("\n=== 首字母大写 (capitalize) ===")
+print(s.str.capitalize().to_pylist())
+
+# 4. 字符串长度
+print("\n=== 字符串长度 (length) ===")
+print(s.str.length().to_pylist())
+
+# 5. 包含子串
+print("\n=== 包含 'Daft' ===")
+pattern = Series.from_pylist(["Daft"])
+print(s.str.contains(pattern).to_pylist())
+
+# 6. 分割字符串
+print("\n=== 按 '_' 分割 ===")
+s2 = Series.from_pylist(["hello_world", "foo_bar_baz"])
+print(s2.str.split("_").to_pylist())
+```
+
+### 示例 3: RecordBatch (MicroPartition) 底层操作
+
+```python
+# 文件: examples/recordbatch_ops.py
+# 运行: python examples/recordbatch_ops.py
+
+from __future__ import annotations
+from daft.expressions import col
+from daft.recordbatch import MicroPartition
+
+# 1. 从字典创建 RecordBatch
+table = MicroPartition.from_pydict({
+    "col": ["foo", None, "barBaz", "quux", "1"],
+    "num": [1, 2, 3, 4, 5]
+})
+
+print("=== 原始 RecordBatch ===")
+print(table.to_pydict())
+
+# 2. 评估表达式 (capitalize)
+print("\n=== 执行 capitalize 表达式 ===")
+result = table.eval_expression_list([col("col").capitalize()])
+print(result.to_pydict())
+
+# 3. 评估数值表达式
+print("\n=== 执行数值表达式 (num * 2) ===")
+result = table.eval_expression_list([col("num") * lit(2)])
+print(result.to_pydict())
+
+# 4. 过滤
+print("\n=== 过滤 (num > 2) ===")
+filtered = table.filter(col("num") > lit(2))
+print(filtered.to_pydict())
+
+# 5. Schema 信息
+print("\n=== Schema 信息 ===")
+print(table.schema())
+```
+
+### 示例 4: SQL 查询
+
+```python
+# 文件: examples/sql_example.py
+# 运行: python examples/sql_example.py
+
+from __future__ import annotations
+import daft
+from daft import sql
+
+# 创建示例数据
+df = daft.from_pydict({
+    "x": [1, 2, 3, 4, 5],
+    "y": [10, 20, 30, 40, 50],
+    "z": ["a", "b", "c", "d", "e"]
+})
+
+# 注册为临时表
+df.create_temp_table("my_table")
+
+# 1. 简单查询
+print("=== SQL 查询: SELECT * ===")
+result = sql("SELECT * FROM my_table WHERE x > 2")
+result.show()
+
+# 2. 聚合查询
+print("\n=== SQL 聚合 ===")
+result = sql("""
+    SELECT 
+        COUNT(*) as count,
+        AVG(y) as avg_y,
+        MAX(x) as max_x
+    FROM my_table
+""")
+result.show()
+
+# 3. 条件查询
+print("\n=== SQL 条件查询 ===")
+result = sql("SELECT x, y FROM my_table WHERE z = 'c' OR z = 'd'")
+result.show()
+```
+
+### 示例 5: 表达式操作
+
+```python
+# 文件: examples/expression_ops.py
+# 运行: python examples/expression_ops.py
+
+from __future__ import annotations
+from daft.expressions import col, lit
+from daft.recordbatch import MicroPartition
+from daft.datatype import DataType
+
+# 创建测试数据
+table = MicroPartition.from_pydict({
+    "a": [1, 2, 3, 4, 5],
+    "b": [10.0, 20.0, 30.0, 40.0, 50.0],
+    "name": ["Alice", "Bob", "Charlie", "Diana", "Eve"]
+})
+
+print("=== 算术表达式 ===")
+result = table.eval_expression_list([
+    (col("a") + col("b")).alias("add"),
+    (col("a") * lit(2)).alias("multiply"),
+    (col("b") / lit(10)).alias("divide"),
+])
+print(result.to_pydict())
+
+print("\n=== 比较表达式 ===")
+result = table.eval_expression_list([
+    (col("a") > lit(3)).alias("gt_3"),
+    (col("a") == lit(2)).alias("eq_2"),
+])
+print(result.to_pydict())
+
+print("\n=== 数学函数 ===")
+result = table.eval_expression_list([
+    col("b").abs().alias("abs"),
+    col("b").round().alias("round"),
+    col("a").sqrt().alias("sqrt"),
+])
+print(result.to_pydict())
+
+print("\n=== 字符串函数 ===")
+result = table.eval_expression_list([
+    col("name").str.upper().alias("upper"),
+    col("name").str.length().alias("length"),
+])
+print(result.to_pydict())
+```
+
+### 如何运行示例
+
+```bash
+# 1. 确保环境已设置
+source .venv/bin/activate
+
+# 2. 创建示例目录
+mkdir -p examples
+
+# 3. 将示例代码保存到文件并运行
+python examples/dataframe_basics.py
+
+# 4. 或使用交互式 Python
+ipython -i examples/dataframe_basics.py
+```
+
+### 调试技巧
+
+```python
+# 启用详细日志
+import logging
+logging.basicConfig(level=logging.DEBUG)
+import daft
+daft.refresh_logger()
+
+# 查看执行计划
+df.explain()
+
+# 查看优化后的计划
+df.explain(show_optimized=True)
+
+# 逐步调试
+df2 = df.filter(col("age") > 28)
+print(df2._builder)  # 查看逻辑计划
+```
+
+---
+
 ## 参考资源
 
 - [Daft 官方文档](https://docs.daft.ai)

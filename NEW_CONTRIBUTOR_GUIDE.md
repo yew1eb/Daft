@@ -76,6 +76,363 @@ make precommit
 
 ---
 
+## 可运行示例
+
+以下是可以直接运行的代码示例，帮助理解 Daft 的 API 和内部工作原理。
+
+### 示例 1: 快速验证安装
+
+```python
+# 保存为 test_install.py 并运行: python test_install.py
+
+from __future__ import annotations
+import daft
+from daft import col, lit
+
+print("✅ Daft 安装成功!")
+print(f"版本: {daft.get_version()}")
+
+# 创建简单 DataFrame
+df = daft.from_pydict({
+    "name": ["Alice", "Bob", "Charlie"],
+    "age": [25, 30, 35],
+    "score": [85.5, 90.0, 78.5]
+})
+
+print("\n=== 原始数据 ===")
+df.show()
+
+# 简单过滤
+print("\n=== 年龄 > 28 ===")
+df.filter(col("age") > 28).show()
+
+print("\n✅ 所有测试通过!")
+```
+
+### 示例 2: 理解 Series (底层数据结构)
+
+```python
+# 保存为 test_series.py 并运行: python test_series.py
+
+from __future__ import annotations
+from daft import Series
+import pyarrow as pa
+
+# 1. 从 Python 列表创建 Series
+print("=== 创建 Series ===")
+s = Series.from_pylist([1, 2, 3, 4, 5])
+print(f"数据: {s.to_pylist()}")
+print(f"类型: {s.datatype()}")
+print(f"长度: {len(s)}")
+
+# 2. 字符串 Series 操作
+print("\n=== 字符串操作 ===")
+str_series = Series.from_pylist(["hello", "WORLD", "Daft"])
+print(f"原始: {str_series.to_pylist()}")
+print(f"大写: {str_series.str.upper().to_pylist()}")
+print(f"小写: {str_series.str.lower().to_pylist()}")
+print(f"长度: {str_series.str.length().to_pylist()}")
+
+# 3. 从 PyArrow 创建 (零拷贝)
+print("\n=== PyArrow 集成 ===")
+arrow_array = pa.array([10, 20, 30, 40])
+series_from_arrow = Series.from_arrow(arrow_array)
+print(f"From Arrow: {series_from_arrow.to_pylist()}")
+
+# 4. 处理 Null 值
+print("\n=== Null 值处理 ===")
+s_with_null = Series.from_pylist([1, None, 3, None, 5])
+print(f"含 Null: {s_with_null.to_pylist()}")
+print(f"填充 Null: {s_with_null.fill_null(0).to_pylist()}")
+```
+
+### 示例 3: 理解表达式 (Expression)
+
+```python
+# 保存为 test_expressions.py 并运行: python test_expressions.py
+
+from __future__ import annotations
+from daft.expressions import col, lit
+from daft.recordbatch import MicroPartition
+
+# 创建测试数据
+table = MicroPartition.from_pydict({
+    "a": [1, 2, 3, 4, 5],
+    "b": [10.0, 20.0, 30.0, 40.0, 50.0],
+    "name": ["alice", "bob", "charlie", "diana", "eve"]
+})
+
+print("=== 原始数据 ===")
+print(table.to_pydict())
+
+# 1. 算术表达式
+print("\n=== 算术表达式 ===")
+result = table.eval_expression_list([
+    (col("a") + col("b")).alias("add"),
+    (col("a") * lit(2)).alias("multiply"),
+    (col("b") - col("a")).alias("subtract"),
+])
+print(result.to_pydict())
+
+# 2. 比较表达式
+print("\n=== 比较表达式 ===")
+result = table.eval_expression_list([
+    col("a"),
+    (col("a") > lit(3)).alias("gt_3"),
+    (col("a") == lit(2)).alias("eq_2"),
+    (col("a") != lit(5)).alias("ne_5"),
+])
+print(result.to_pydict())
+
+# 3. 字符串表达式
+print("\n=== 字符串表达式 ===")
+result = table.eval_expression_list([
+    col("name").str.upper().alias("upper"),
+    col("name").str.length().alias("length"),
+])
+print(result.to_pydict())
+
+# 4. 数学函数
+print("\n=== 数学函数 ===")
+result = table.eval_expression_list([
+    col("a"),
+    col("a").abs().alias("abs"),
+    col("b").round().alias("round"),
+    col("a").sqrt().alias("sqrt"),
+])
+print(result.to_pydict())
+```
+
+### 示例 4: RecordBatch/MicroPartition 操作
+
+```python
+# 保存为 test_recordbatch.py 并运行: python test_recordbatch.py
+
+from __future__ import annotations
+from daft.expressions import col
+from daft.recordbatch import MicroPartition
+
+# 1. 创建 RecordBatch
+print("=== 创建 RecordBatch ===")
+table = MicroPartition.from_pydict({
+    "col": ["foo", None, "barBaz", "quux", "1"],
+    "num": [1, 2, 3, 4, 5]
+})
+print(table.to_pydict())
+print(f"列名: {table.column_names()}")
+print(f"行数: {len(table)}")
+
+# 2. 评估表达式
+print("\n=== 执行表达式 ===")
+result = table.eval_expression_list([col("col").capitalize()])
+print(result.to_pydict())
+
+# 3. 过滤
+print("\n=== 过滤 ===")
+filtered = table.filter(col("num") > 2)
+print(filtered.to_pydict())
+
+# 4. 获取单列
+print("\n=== 获取单列 ===")
+col_data = table.get_column_by_name("num")
+print(f"列数据: {col_data.to_pylist()}")
+print(f"列类型: {col_data.datatype()}")
+
+# 5. Schema 信息
+print("\n=== Schema 信息 ===")
+print(table.schema())
+```
+
+### 示例 5: DataFrame 完整工作流
+
+```python
+# 保存为 test_dataframe.py 并运行: python test_dataframe.py
+
+from __future__ import annotations
+import daft
+from daft import col, lit
+
+# 1. 创建 DataFrame
+print("=== 创建 DataFrame ===")
+df = daft.from_pydict({
+    "name": ["Alice", "Bob", "Charlie", "Diana", "Eve"],
+    "department": ["Engineering", "Sales", "Engineering", "Marketing", "Sales"],
+    "salary": [80000.0, 60000.0, 90000.0, 70000.0, 65000.0],
+    "years_exp": [5, 3, 7, 4, 2]
+})
+df.show()
+
+# 2. 过滤
+print("\n=== 过滤: 薪资 > 65000 ===")
+df.filter(col("salary") > 65000).show()
+
+# 3. 选择列
+print("\n=== 选择列 ===")
+df.select(col("name"), col("salary")).show()
+
+# 4. 添加计算列
+print("\n=== 添加计算列 ===")
+df.with_column("bonus", col("salary") * lit(0.1)).show()
+
+# 5. 分组聚合
+print("\n=== 按部门分组 ===")
+df.groupby(col("department")).agg(
+    daft.count(col("name")).alias("employee_count"),
+    daft.mean(col("salary")).alias("avg_salary"),
+    daft.max(col("salary")).alias("max_salary"),
+).show()
+
+# 6. 排序
+print("\n=== 按薪资降序 ===")
+df.sort(col("salary"), desc=True).show()
+
+# 7. 收集结果
+print("\n=== 收集为 Python 字典 ===")
+result = df.collect().to_pydict()
+print(result)
+```
+
+### 示例 6: SQL 查询
+
+```python
+# 保存为 test_sql.py 并运行: python test_sql.py
+
+from __future__ import annotations
+import daft
+from daft import sql
+
+# 创建数据
+df = daft.from_pydict({
+    "id": [1, 2, 3, 4, 5],
+    "product": ["A", "B", "A", "C", "B"],
+    "quantity": [10, 5, 8, 3, 12],
+    "price": [100.0, 200.0, 100.0, 300.0, 200.0]
+})
+
+# 注册为临时表
+df.create_temp_table("sales")
+
+# 1. 简单查询
+print("=== 简单查询 ===")
+result = sql("SELECT * FROM sales WHERE quantity > 5")
+result.show()
+
+# 2. 聚合查询
+print("\n=== 聚合查询 ===")
+result = sql("""
+    SELECT 
+        product,
+        COUNT(*) as total_orders,
+        SUM(quantity) as total_quantity,
+        AVG(price) as avg_price
+    FROM sales
+    GROUP BY product
+""")
+result.show()
+
+# 3. 条件查询
+print("\n=== 条件查询 ===")
+result = sql("SELECT id, product FROM sales WHERE price >= 200 AND quantity > 5")
+result.show()
+```
+
+### 示例 7: 调试技巧
+
+```python
+# 保存为 test_debug.py 并运行: python test_debug.py
+
+from __future__ import annotations
+import daft
+from daft import col
+
+# 启用调试日志
+import logging
+logging.basicConfig(level=logging.INFO)
+daft.refresh_logger()
+
+df = daft.from_pydict({
+    "x": [1, 2, 3, 4, 5],
+    "y": ["a", "b", "c", "d", "e"]
+})
+
+# 查看执行计划
+print("=== 执行计划 ===")
+df2 = df.filter(col("x") > 2).select(col("y"))
+df2.explain()
+
+print("\n=== 优化后的计划 ===")
+df2.explain(show_optimized=True)
+
+# 查看逻辑计划
+print("\n=== 逻辑计划详情 ===")
+print(df2._builder)
+```
+
+### 运行示例的方法
+
+```bash
+# 1. 确保环境激活
+source .venv/bin/activate
+
+# 2. 确保已构建
+make build
+
+# 3. 运行单个示例
+python test_install.py
+
+# 4. 使用 IPython 交互式运行
+ipython -i test_dataframe.py
+
+# 5. 运行测试（从测试目录）
+export DAFT_RUNNER=native
+pytest tests/recordbatch/utf8/test_capitalize.py -v
+```
+
+### 常见测试模式
+
+```python
+# 模式 1: 测试 Series 函数
+def test_my_function():
+    from daft import Series
+    
+    # 准备输入
+    input_series = Series.from_pylist(["hello", "world"])
+    
+    # 执行操作
+    result = input_series.str.my_function()
+    
+    # 验证结果
+    assert result.to_pylist() == ["expected", "result"]
+
+# 模式 2: 测试表达式
+def test_my_expression():
+    from daft.expressions import col
+    from daft.recordbatch import MicroPartition
+    
+    # 创建测试数据
+    table = MicroPartition.from_pydict({
+        "col": ["foo", "bar"]
+    })
+    
+    # 评估表达式
+    result = table.eval_expression_list([col("col").my_function()])
+    
+    # 验证
+    assert result.to_pydict() == {"col": ["expected", "result"]}
+
+# 模式 3: 测试 DataFrame
+def test_my_dataframe_op():
+    import daft
+    from daft import col
+    
+    df = daft.from_pydict({"x": [1, 2, 3]})
+    result = df.my_operation().collect().to_pydict()
+    
+    assert result == {"x": ["expected"]}
+```
+
+---
+
 ## 新手友好的任务
 
 ### 🟢 难度：入门 (Good First Issues)
